@@ -4,5 +4,6 @@ build
 node_modules/**
 .vscode
 .pytest_cache/
-
+.idea
+.DS_Store
 __pycache__
