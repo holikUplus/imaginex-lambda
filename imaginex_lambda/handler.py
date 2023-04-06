@@ -5,6 +5,7 @@ from contextlib import ExitStack
 from tempfile import TemporaryFile
 from typing import IO, Tuple, Dict
 from urllib.request import urlopen
+from io import BytesIO
 
 import botocore.session
 from PIL import Image
@@ -47,7 +48,7 @@ def download_image(buffer: IO[bytes], img_url: str):
         shutil.copyfileobj(r, buffer, DOWNLOAD_CHUNK_SIZE)
 
     logger.info("Downloaded image from %s. Content type: %s, content size: %d", img_url, content_type, content_size)
-    return {'content_type': content_type, 'content_size': content_size}
+    return buffer, {'content_type': content_type, 'content_size': content_size}
 
 
 def get_s3_image(buffer: IO[bytes], key: str) -> Dict[str, int]:
@@ -69,7 +70,7 @@ def get_s3_image(buffer: IO[bytes], key: str) -> Dict[str, int]:
 
     logger.info("Downloaded image from S3 with key: %s. Content type: %s, content size: %d", key, content_type,
                 content_size)
-    return {'content_type': content_type, 'content_size': content_size}
+    return buffer, {'content_type': content_type, 'content_size': content_size}
 
 
 def optimize_image(buffer: IO[bytes], ext: str, width: int, quality: int) -> bytes:
@@ -97,7 +98,6 @@ def optimize_image(buffer: IO[bytes], ext: str, width: int, quality: int) -> byt
             logger.info("New height: %d", new_height)
             img = stack.enter_context(img.resize((width, new_height)))
             logger.info("Resized image to width: %d and height: %d", width, new_height)
-
         tmp = stack.enter_context(BytesIO())
         img.save(tmp, quality=quality, optimize=True, format=ext)
         tmp.seek(0)
@@ -149,10 +149,10 @@ def download_and_optimize(url: str, quality: int, width: int) -> Tuple[bytes, st
 
     with TemporaryFile() as buffer:
         if is_absolute(url):
-            download_image(buffer, url)
+            buffer, _ = download_image(buffer, url)
         else:
             key = url.strip('/')
-            get_s3_image(buffer, key)
+            buffer, _ = get_s3_image(buffer, key)
 
         buffer.flush()
         original = os.stat(buffer.name).st_size
